@@ -416,10 +416,25 @@ if ('serviceWorker' in navigator){
   const swUrl = URL.createObjectURL(swBlob);
   navigator.serviceWorker.register(swUrl).then(()=>console.log('sw registered from blob')).catch(e=>console.warn('sw reg failed',e));
   // manifest
-  const manifest = { name: 'Hex Game', short_name:'HexGame', start_url: '.', display:'standalone', icons: [] };
-  const manBlob = new Blob([JSON.stringify(manifest)],{type:'application/json'});
-  const manUrl = URL.createObjectURL(manBlob);
-  const link = document.createElement('link'); link.rel='manifest'; link.href = manUrl; document.head.appendChild(link);
+const manifest = {
+  name: 'Hex Game',
+  short_name: 'HexGame',
+  start_url: '.',
+  display: 'standalone',
+  icons: [
+    {
+      src: 'icon-512.png', // файл должен лежать рядом с index.html
+      sizes: '512x512',
+      type: 'image/png'
+    }
+  ]
+};
+const manBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+const manUrl = URL.createObjectURL(manBlob);
+const link = document.createElement('link');
+link.rel = 'manifest';
+link.href = manUrl;
+document.head.appendChild(link);
 }
 
 // --- helpers / debug ---
