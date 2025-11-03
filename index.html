@@ -423,12 +423,13 @@ const manifest = {
   display: 'standalone',
   icons: [
     {
-      src: 'icon-512.png', // файл должен лежать рядом с index.html
-      sizes: '512x512',
-      type: 'image/png'
+      src: 'icon-512.png',   // здесь путь к файлу PNG
+      sizes: '512x512',      // размер иконки
+      type: 'image/png'      // MIME тип — обязательно 'image/png'
     }
   ]
 };
+
 const manBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
 const manUrl = URL.createObjectURL(manBlob);
 const link = document.createElement('link');
