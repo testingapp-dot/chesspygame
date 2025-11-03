@@ -416,14 +416,14 @@ if ('serviceWorker' in navigator){
   const swUrl = URL.createObjectURL(swBlob);
   navigator.serviceWorker.register(swUrl).then(()=>console.log('sw registered from blob')).catch(e=>console.warn('sw reg failed',e));
   // manifest
-const manifest = {
+  const manifest = {
   name: 'Hex Game',
   short_name: 'HexGame',
   start_url: '.',
   display: 'standalone',
   icons: [
     {
-      src: 'icon-512.png',   // здесь путь к файлу PNG
+      src: 'https://testingapp-dot.github.io/chesspygame/favicon.png',   // здесь путь к файлу PNG
       sizes: '512x512',      // размер иконки
       type: 'image/png'      // MIME тип — обязательно 'image/png'
     }
