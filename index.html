@@ -229,7 +229,7 @@ async function animateTriangleCenters(new_tris_list){
 }
 
 // --- WebSocket client ---
-const WS_URL = 'ws://dreamy-colden.87-255-194-3.plesk.page:3000';
+const WS_URL = 'wss://frosty-colden.185-234-114-50.plesk.page';
 class WSClient {
   constructor(url){ this.url = url; this.ws = null; this.queue = []; this.connected = false; }
   connect(){
@@ -404,4 +404,3 @@ function logState(){ console.log({con, tris, score, moves, turn, room_chosen, pl
 </script>
 </body>
 </html>
-
