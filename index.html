@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
 <title>Hex Game — Multiplayer (PWA-ready)</title>
 <style>
   html,body{height:100%;margin:0;background:#14151a;font-family:Arial, Helvetica, sans-serif}
@@ -252,25 +252,49 @@ async function handle_server_messages(){
   const data = ws_client.recv_nowait(); if (!data) return;
   const t = data.type;
   if (t === 'created'){
-    room_chosen = data.room; player_index = data.playerIndex; console.log('created', room_chosen, player_index);
+    room_chosen = data.room;
+    player_index = data.playerIndex;
+    console.log('created', room_chosen, player_index);
   } else if (t === 'joined'){
-    room_chosen = data.room; player_index = data.playerIndex; console.log('joined', room_chosen, player_index);
+    room_chosen = data.room;
+    player_index = data.playerIndex;
+    console.log('joined', room_chosen, player_index);
   } else if (t === 'lobby'){
-    lobby_players = data.players || []; const hostIndex = data.hostIndex || 0; is_host = (player_index === hostIndex);
+    lobby_players = data.players || [];
+    const hostIndex = (typeof data.hostIndex !== 'undefined') ? data.hostIndex : 0;
+    is_host = (player_index === hostIndex);
   } else if (t === 'start'){
-    con = []; tris = []; score = data.score || score; moves = data.moves || moves; turn = data.turn || turn; game_over = false; winner=null; waiting_for_server=false;
+    con = [];
+    tris = [];
+    score = Array.isArray(data.score) ? data.score : score;
+    moves = Array.isArray(data.moves) ? data.moves : moves;
+    turn = (typeof data.turn !== 'undefined') ? data.turn : turn;
+    game_over = (typeof data.game_over !== 'undefined') ? data.game_over : false;
+    winner = (typeof data.winner !== 'undefined') ? data.winner : null;
+    waiting_for_server = false;
   } else if (t === 'state_update'){
     console.log('Received state_update:', data);
     // authoritative edges
-    try{ con = (data.con || []).map(pair => [pair[0], pair[1]]); }catch(e){ con = []; }
+    try { con = (data.con || []).map(pair => [pair[0], pair[1]]); } catch(e){ con = []; }
     // tris
     if (Array.isArray(data.tris)){
       tris = data.tris.map(tr => ({ points: tr.points.slice(), owner: tr.owner }));
     } else {
       const new_tris = data.new_tris || [];
-      for (const tr of new_tris){ const pts_trip = tr.points.slice(); const owner = tr.owner; if (!tris.find(t=>arraysEqual(t.points.slice().sort(), pts_trip.slice().sort()))){ tris.push({points:pts_trip, owner}); } }
+      for (const tr of new_tris){
+        const pts_trip = tr.points.slice();
+        const owner = tr.owner;
+        if (!tris.find(t=>arraysEqual(t.points.slice().sort(), pts_trip.slice().sort()))){
+          tris.push({points:pts_trip, owner});
+        }
+      }
     }
-    score = data.score || score; moves = data.moves || moves; turn = data.turn || turn; game_over = data.game_over || false; winner = data.winner === undefined ? winner : data.winner; waiting_for_server=false;
+    score = Array.isArray(data.score) ? data.score : score;
+    moves = Array.isArray(data.moves) ? data.moves : moves;
+    turn = (typeof data.turn !== 'undefined') ? data.turn : turn;
+    game_over = (typeof data.game_over !== 'undefined') ? data.game_over : game_over;
+    winner = (typeof data.winner !== 'undefined') ? data.winner : winner;
+    waiting_for_server = false;
   }
 }
 
