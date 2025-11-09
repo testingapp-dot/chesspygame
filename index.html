@@ -6,13 +6,41 @@
 <title>Hex Game — Multiplayer (PWA-ready)</title>
 <link rel="manifest" href="manifest.json">
 <style>
-  html,body{height:100%;margin:0;background:#14151a;font-family:Arial, Helvetica, sans-serif}
-  #game{display:block;margin:0 auto;background:#14151a;touch-action:none}
-  .note{position:fixed;left:8px;bottom:8px;color:#ccc;font-size:12px}
+html, body {
+  height: 100%;
+  margin: 0;
+  background: #14151a;
+  font-family: Arial, Helvetica, sans-serif;
+  overflow: hidden; /* stop scrolling */
+}
+
+#game {
+  display: block;
+  background: #14151a;
+  touch-action: none;
+  width: 100vw;     /* full viewport width */
+  height: 100vh;    /* full viewport height */
+  object-fit: contain; /* keep aspect ratio if possible */
+}
+
+.note {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  color: #ccc;
+  font-size: 12px;
+}
+
+@media (orientation: landscape) {
+  #game {
+    width: 100vw;
+    height: 100vh;
+  }
+}
 </style>
 </head>
 <body>
-<canvas id="game" width="1000" height="700"></canvas>
+<canvas id="game" width="1920" height="1080"></canvas>
 <div class="note">Tip: run the provided server.js and open this page. Works offline as PWA after install.</div>
 <script>
 /* Hex Game — single-file PWA-ready client
@@ -28,7 +56,7 @@ const STEP = 4;   // required path length
 const SP = 60;    // spacing
 const DR = 10;    // dot radius
 const STEP_POINTS = 4; // step variable name to match original
-const WIDTH = 1000, HEIGHT = 700;
+const WIDTH = 1920, HEIGHT = 1080;
 
 // Colors & fonts
 const BG = '#14171b';
@@ -445,4 +473,5 @@ function logState(){ console.log({con, tris, score, moves, turn, room_chosen, pl
 </script>
 </body>
 </html>
+
 
