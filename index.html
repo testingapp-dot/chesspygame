@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Hex Game — Multiplayer (PWA-ready)</title>
 <link rel="manifest" href="manifest.json">
 <style>
@@ -34,13 +34,13 @@ html, body {
 @media (orientation: landscape) {
   #game {
     width: 100vw;
-    height: 100vh;
+    height: 100dvh;
   }
 }
 </style>
 </head>
 <body>
-<canvas id="game" width="1920" height="1080"></canvas>
+<canvas id="game" width="1000" height="700"></canvas>
 <div class="note">Tip: run the provided server.js and open this page. Works offline as PWA after install.</div>
 <script>
 /* Hex Game — single-file PWA-ready client
@@ -56,7 +56,7 @@ const STEP = 4;   // required path length
 const SP = 60;    // spacing
 const DR = 10;    // dot radius
 const STEP_POINTS = 4; // step variable name to match original
-const WIDTH = 1920, HEIGHT = 1080;
+const WIDTH = 1000, HEIGHT = 700;
 
 // Colors & fonts
 const BG = '#14171b';
