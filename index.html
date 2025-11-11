@@ -2,52 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
 <title>Hex Game — Multiplayer (PWA-ready)</title>
-<link rel="manifest" href="manifest.json">
 <style>
-html, body {
-  height: 100%;
-  margin: 0;
-  background: #14151a;
-  font-family: Arial, Helvetica, sans-serif;
-  overflow: hidden; /* stop scrolling */
-}
-
-#game {
-  display: block;
-  background: #14151a;
-  touch-action: none;
-  width: 100vw;     /* full viewport width */
-  height: 100vh;    /* full viewport height */
-  object-fit: contain; /* keep aspect ratio if possible */
-}
-
-.note {
-  position: fixed;
-  left: 8px;
-  bottom: 8px;
-  color: #ccc;
-  font-size: 12px;
-}
-
-@media (orientation: landscape) {
-  #game {
-    width: 100vw;
-    height: 100dvh;
-  }
-}
+  html,body{height:100%;margin:0;background:#14151a;font-family:Arial, Helvetica, sans-serif}
+  #game{display:block;margin:0 auto;background:#14151a;touch-action:none}
+  .note{position:fixed;left:8px;bottom:8px;color:#ccc;font-size:12px}
 </style>
 </head>
 <body>
 <canvas id="game" width="1000" height="700"></canvas>
-<div class="note"></div>
+<div class="note">Tip: run the provided server.js and open this page. Works offline as PWA after install.</div>
 <script>
-/* Hex Game — single-file PWA-ready client
-   - Draws nearly-identical UI to original Python/pygame client
-   - Connects to WebSocket server at ws://localhost:8080
-   - Implements lobby (create/join/start), authoritative state updates, local fallback
-   - Self-registers a simple service-worker and manifest via Blob so this single file can behave as a PWA
+/* Hex Game — single-file PWA-ready client (updated)
+   - Adds player-count selection (2/3/4) near Create
+   - Shows servers list (rooms) with Join buttons
+   - Displays trophy overlay on server 'game_over' then returns to lobby
 */
 
 // --- Constants (keep in sync with server) ---
@@ -106,6 +76,19 @@ let animating = false; let waiting_for_server = false;
 let room_chosen = null; let player_index = null; let is_host = false; let lobby_players = [];
 let input_active = null; let input_name = 'Player'; let input_room = 'room1';
 
+// UI: selected player count (2/3/4)
+let selectedPlayerCount = 4;
+
+// Servers list data
+let servers = []; // [{id, players, started, minPlayers, maxPlayers}]
+let serversButtonRects = []; // store Join button rects for hit testing
+let serversRefreshInterval = null;
+
+// Winner overlay
+let showWinnerOverlay = false;
+let winnerOverlayData = null; // {winnerName, emoji}
+let winnerOverlayTimeout = null;
+
 // Mouse interaction
 let dragging = false; let drag_pos = null;
 
@@ -162,28 +145,63 @@ function roundRect(ctx,x,y,w,h,r, fill=false, fillStyle='#000'){
   else ctx.stroke();
 }
 
+// === Small Hex Pattern helpers ===
 function drawFrame(sel_local=null, dragPos=null, temp_centers=null){
-  ctx.fillStyle = BG; ctx.fillRect(0,0,WIDTH,HEIGHT);
+  ctx.fillStyle = BG;
+  ctx.fillRect(0,0,WIDTH,HEIGHT);
+
   // edges
-  ctx.lineWidth = 4; ctx.strokeStyle = LINE_COLOR;
-  for (const [a,b] of con){ drawLine(ctx, pts[a].pos, pts[b].pos, 4); }
-  // triangles
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = LINE_COLOR;
+  for (const [a,b] of con){
+    drawLine(ctx, pts[a].pos, pts[b].pos, 4);
+  }
+
+  // triangles — now just small dot in the middle
   for (const tri of tris){
     try{
       const ptsList = tri.points.map(i=>pts[i].pos);
-      ctx.beginPath(); ctx.moveTo(ptsList[0][0],ptsList[0][1]); ctx.lineTo(ptsList[1][0],ptsList[1][1]); ctx.lineTo(ptsList[2][0],ptsList[2][1]); ctx.closePath();
-      ctx.fillStyle = PLAYERS_COLORS[tri.owner] || PLAYERS_COLORS[0]; ctx.fill();
+      const color = PLAYERS_COLORS[tri.owner] || PLAYERS_COLORS[0];
+
+      // center of triangle
+      const cx = (ptsList[0][0] + ptsList[1][0] + ptsList[2][0]) / 3;
+      const cy = (ptsList[0][1] + ptsList[1][1] + ptsList[2][1]) / 3;
+
+      // draw small hex or circle (your choice)
+      drawHexagon(ctx, color, [cx, cy], 8, true);
     }catch(e){ }
   }
+
   // temp centers for animation
   if (temp_centers){
-    for (const [center, color] of temp_centers){ drawHexagon(ctx, color, center, 10, true); }
+    for (const [center, color] of temp_centers){
+      drawHexagon(ctx, color, center, 10, true);
+    }
   }
+
   // points
-  for (const p of pts){ drawHexagon(ctx, DOT, p.pos, DR, true); }
+  for (const p of pts){
+    drawHexagon(ctx, DOT, p.pos, DR, true);
+  }
+
   // dragging preview
-  if (sel_local !== null && dragPos){ drawLine(ctx, pts[sel_local].pos, dragPos, 4); }
+  if (sel_local !== null && dragPos){
+    drawLine(ctx, pts[sel_local].pos, dragPos, 4);
+  }
+
   drawPlayerPanels();
+
+  // If winner overlay active, render it above
+  if (showWinnerOverlay && winnerOverlayData){
+    const bgAlpha = 0.86;
+    ctx.fillStyle = `rgba(0,0,0,${bgAlpha})`;
+    ctx.fillRect(0,0,WIDTH,HEIGHT);
+    ctx.font = '48px Arial';
+    ctx.fillStyle = '#fff';
+    const text = `${winnerOverlayData.emoji || '🏆'}  Победитель: ${winnerOverlayData.winnerName || ('P' + (winner+1))}`;
+    const w = ctx.measureText(text).width;
+    ctx.fillText(text, WIDTH/2 - w/2, HEIGHT/2 - 24);
+  }
 }
 
 // --- Utilities ---
@@ -277,12 +295,19 @@ class WSClient {
 }
 const ws_client = new WSClient(WS_URL);
 
+// Request rooms list
+function requestRoomsList(){
+  if (ws_client.connected) ws_client.send({ type: 'list_rooms' });
+}
+
+// handle server messages
 async function handle_server_messages(){
   const data = ws_client.recv_nowait(); if (!data) return;
   const t = data.type;
   if (t === 'created'){
     room_chosen = data.room;
     player_index = data.playerIndex;
+    // server returns min/max — keep them if needed
     console.log('created', room_chosen, player_index);
   } else if (t === 'joined'){
     room_chosen = data.room;
@@ -302,10 +327,8 @@ async function handle_server_messages(){
     winner = (typeof data.winner !== 'undefined') ? data.winner : null;
     waiting_for_server = false;
   } else if (t === 'state_update'){
-    console.log('Received state_update:', data);
-    // authoritative edges
+    // authoritative edges/tris/state
     try { con = (data.con || []).map(pair => [pair[0], pair[1]]); } catch(e){ con = []; }
-    // tris
     if (Array.isArray(data.tris)){
       tris = data.tris.map(tr => ({ points: tr.points.slice(), owner: tr.owner }));
     } else {
@@ -324,6 +347,31 @@ async function handle_server_messages(){
     game_over = (typeof data.game_over !== 'undefined') ? data.game_over : game_over;
     winner = (typeof data.winner !== 'undefined') ? data.winner : winner;
     waiting_for_server = false;
+  } else if (t === 'rooms_list'){
+    // update local servers list
+    servers = Array.isArray(data.rooms) ? data.rooms : [];
+  } else if (t === 'game_over'){
+    // server announces the winner and optional emoji
+    showWinnerOverlay = true;
+    winnerOverlayData = { winnerName: data.winnerName || null, emoji: data.emoji || '🏆' };
+    // show overlay for few seconds, then return to lobby (clear room_chosen)
+    if (winnerOverlayTimeout) clearTimeout(winnerOverlayTimeout);
+    winnerOverlayTimeout = setTimeout(()=>{
+      showWinnerOverlay = false;
+      winnerOverlayData = null;
+      // return to lobby view
+      room_chosen = null;
+      player_index = null;
+      lobby_players = [];
+      con = []; tris = [];
+      score = [0,0,0,0]; moves = [15,15,15,15];
+      requestRoomsList();
+    }, 3000);
+  } else if (t === 'closed'){
+    // ws closed
+    console.log('server closed connection');
+  } else if (t === 'error'){
+    console.warn('server error:', data.message);
   }
 }
 
@@ -337,21 +385,60 @@ canvas.addEventListener('mousedown', async (ev)=>{
   const pos = canvasPos(ev); const mx = pos.x, my = pos.y;
   // If in lobby (room_chosen===null and empty board)
   if (room_chosen === null && con.length===0 && tris.length===0){
-    // simple hitboxes similar to Python positions
-    if (50 <= mx && mx <= 350 && 120 <= my && my <= 160) { input_active = 'name'; }
-    else if (50 <= mx && mx <= 350 && 180 <= my && my <= 220) { input_active = 'room'; }
-    else if (380 <= mx && mx <= 520 && 120 <= my && my <= 160){ // Create
+    // Player name box
+    if (50 <= mx && mx <= 350 && 120 <= my && my <= 160) { input_active = 'name'; return; }
+    // Room box
+    if (50 <= mx && mx <= 350 && 180 <= my && my <= 220) { input_active = 'room'; return; }
+
+    // player-count buttons (drawn near create)
+    // button positions match drawLobbyUI below: at x 540.. (three 40x36 buttons)
+    if (520 <= mx && mx <= 720 && 120 <= my && my <= 160){
+      // three buttons horizontally
+      const bx = mx - 520;
+      const idxBtn = Math.floor(bx / 66); // approx
+      const mapping = [2,3,4]; // left->2, mid->3, right->4
+      const sel = mapping[Math.max(0, Math.min(2, idxBtn))];
+      selectedPlayerCount = sel;
+      return;
+    }
+
+    // Create button (380..520 x 120..160)
+    if (380 <= mx && mx <= 520 && 120 <= my && my <= 160){
       if (!ws_client.connected){ try{ await ws_client.connect(); }catch(e){ console.error('connect failed',e); return; } }
-      ws_client.send({ type:'create', room: input_room, name: input_name });
-    } else if (380 <= mx && mx <= 520 && 180 <= my && my <= 220){ // Join
+      // send create, include chosen playerCount so server knows how many to wait for
+      ws_client.send({ type:'create', room: input_room, name: input_name, playerCount: selectedPlayerCount });
+      return;
+    }
+
+    // Join button for manual room (380..520 x 180..220)
+    if (380 <= mx && mx <= 520 && 180 <= my && my <= 220){
       if (!ws_client.connected){ try{ await ws_client.connect(); }catch(e){ console.error('connect failed',e); return; } }
       ws_client.send({ type:'join', room: input_room, name: input_name });
-    } else if (800 <= mx && mx <= 940 && 120 <= my && my <= 160 && is_host && room_chosen){ // Start
-      ws_client.send({ type:'start', room: room_chosen });
+      return;
     }
+
+    // Start button (host)
+    if (800 <= mx && mx <= 940 && 120 <= my && my <= 160 && is_host && room_chosen){
+      ws_client.send({ type:'start', room: room_chosen });
+      return;
+    }
+
+    // Servers list join buttons (rendered on right area). Check hit against stored rects
+    for (let i=0;i<serversButtonRects.length;i++){
+      const r = serversButtonRects[i];
+      if (mx >= r.x && mx <= r.x+r.w && my >= r.y && my <= r.y+r.h){
+        // join that server by id
+        const roomId = servers[i].id;
+        if (!ws_client.connected){ try{ await ws_client.connect(); }catch(e){ console.error('connect failed',e); return; } }
+        ws_client.send({ type:'join', room: roomId, name: input_name });
+        return;
+      }
+    }
+
     return;
   }
 
+  // Gameplay click handling (unchanged)
   if (animating || waiting_for_server) return;
   if (game_over) return;
   if (score[turn] >= 15 || moves[turn] <= 0){ next_turn_local(); return; }
@@ -397,14 +484,73 @@ function canvasPos(ev){
   const rect = canvas.getBoundingClientRect(); return { x: Math.round((ev.clientX-rect.left)*(canvas.width/rect.width)), y: Math.round((ev.clientY-rect.top)*(canvas.height/rect.height)) };
 }
 
+// Render lobby UI including player-count buttons and servers list
+function drawLobbyUI(){
+  ctx.fillStyle = '#1e1e24'; ctx.fillRect(0,0,WIDTH,HEIGHT);
+  ctx.font = '64px Arial'; ctx.fillStyle = '#fff'; const title = 'Lobby'; ctx.fillText(title, WIDTH/2 - ctx.measureText(title).width/2, 20);
+
+  // name box
+  ctx.fillStyle = '#32323c'; roundRect(ctx,50,120,300,40,6,true); ctx.strokeStyle = '#c8c8c8'; ctx.lineWidth=2; roundRect(ctx,50,120,300,40,6,false);
+  ctx.fillStyle = '#fff'; ctx.font = FONT; ctx.fillText('Name: ' + input_name, 60, 128);
+  // room box
+  ctx.fillStyle = '#32323c'; roundRect(ctx,50,180,300,40,6,true); ctx.strokeStyle = '#c8c8c8'; roundRect(ctx,50,180,300,40,6,false);
+  ctx.fillStyle = '#fff'; ctx.fillText('Room: ' + input_room, 60, 188);
+
+  // player-count buttons (2/3/4) near Create
+  const pcX = 520, pcY = 120, pcW = 66, pcH = 36;
+  ctx.fillStyle = '#222'; ctx.font = FONT;
+  const counts = [2,3,4];
+  for (let i=0;i<counts.length;i++){
+    const x = pcX + i*(pcW + 6);
+    const y = pcY;
+    const isSel = (counts[i] === selectedPlayerCount);
+    roundRect(ctx,x,y,pcW,pcH,6,true, isSel ? '#3cc078' : '#444');
+    ctx.fillStyle = isSel ? '#000' : '#fff';
+    ctx.fillText(String(counts[i]), x + pcW/2 - ctx.measureText(String(counts[i])).width/2, y+6);
+  }
+  ctx.font = FONT;
+
+  // create/join buttons
+  ctx.fillStyle = '#4682b4'; roundRect(ctx,380,120,140,40,6,true); roundRect(ctx,380,180,140,40,6,true);
+  ctx.fillStyle = '#fff'; ctx.fillText('Create', 405,128); ctx.fillText('Join', 415,188);
+
+  // player list (players in current room if any)
+  ctx.fillStyle = '#fff'; ctx.fillText('Players in room:', 50,250);
+  let y = 290; ctx.font = FONT; for (const p of lobby_players){ const flag = p.isHost ? ' (host)' : ''; ctx.fillStyle = '#e6e6e6'; ctx.fillText(`${p.index+1}. ${p.name}${flag}`, 60, y); y += 30; }
+  if (is_host && room_chosen){ ctx.fillStyle = '#3cc078'; roundRect(ctx,800,120,140,40,6,true); ctx.fillStyle = '#000'; ctx.fillText('Start', 830,128); }
+
+  // servers list on right
+  ctx.fillStyle = '#fff'; ctx.fillText('Servers:', 520, 220);
+  serversButtonRects = [];
+  let sy = 260;
+  ctx.font = '18px Arial';
+  for (let i=0;i<servers.length;i++){
+    const s = servers[i];
+    // row background
+    roundRect(ctx,520, sy, 440, 40, 6, true, '#2a2a33');
+    ctx.fillStyle = '#fff';
+    const label = `${s.id} — players: ${s.players} (${s.minPlayers}/${s.maxPlayers}) ${s.started ? '[started]' : ''}`;
+    ctx.fillText(label, 530, sy+10);
+    // join button on this row
+    const bx = 880, by = sy+6, bw = 70, bh = 28;
+    roundRect(ctx,bx,by,bw,bh,6,true, '#4682b4');
+    ctx.fillStyle = '#fff'; ctx.fillText('Join', bx+18, by+4);
+    serversButtonRects.push({ x: bx, y: by, w: bw, h: bh });
+    sy += 54;
+    if (sy > HEIGHT - 80) break;
+  }
+  ctx.font = FONT;
+}
+
 // --- Main loop ---
 let lastTick = performance.now();
 async function mainLoop(ts){
   // handle any server messages
   try{ await handle_server_messages(); }catch(e){}
   // draw
-  if (room_chosen === null && con.length===0 && tris.length===0){ drawLobbyUI(); }
-  else {
+  if (room_chosen === null && con.length===0 && tris.length===0){
+    drawLobbyUI();
+  } else {
     drawFrame(sel, drag_pos);
     if (game_over){
       ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,WIDTH,HEIGHT);
@@ -417,26 +563,13 @@ async function mainLoop(ts){
 }
 requestAnimationFrame(mainLoop);
 
-function drawLobbyUI(){
-  ctx.fillStyle = '#1e1e24'; ctx.fillRect(0,0,WIDTH,HEIGHT);
-  ctx.font = '64px Arial'; ctx.fillStyle = '#fff'; const title = 'Lobby'; ctx.fillText(title, WIDTH/2 - ctx.measureText(title).width/2, 20);
-  // name box
-  ctx.fillStyle = '#32323c'; roundRect(ctx,50,120,300,40,6,true); ctx.strokeStyle = '#c8c8c8'; ctx.lineWidth=2; roundRect(ctx,50,120,300,40,6,false);
-  ctx.fillStyle = '#fff'; ctx.font = FONT; ctx.fillText('Name: ' + input_name, 60, 128);
-  // room box
-  ctx.fillStyle = '#32323c'; roundRect(ctx,50,180,300,40,6,true); ctx.strokeStyle = '#c8c8c8'; roundRect(ctx,50,180,300,40,6,false);
-  ctx.fillStyle = '#fff'; ctx.fillText('Room: ' + input_room, 60, 188);
-  // create/join buttons
-  ctx.fillStyle = '#4682b4'; roundRect(ctx,380,120,140,40,6,true); roundRect(ctx,380,180,140,40,6,true);
-  ctx.fillStyle = '#fff'; ctx.fillText('Create', 405,128); ctx.fillText('Join', 415,188);
-  // player list
-  ctx.fillStyle = '#fff'; ctx.fillText('Players in room:', 50,250);
-  let y = 290; ctx.font = FONT; for (const p of lobby_players){ const flag = p.isHost ? ' (host)' : ''; ctx.fillStyle = '#e6e6e6'; ctx.fillText(`${p.index+1}. ${p.name}${flag}`, 60, y); y += 30; }
-  if (is_host && room_chosen){ ctx.fillStyle = '#3cc078'; roundRect(ctx,800,120,140,40,6,true); ctx.fillStyle = '#000'; ctx.fillText('Start', 830,128); }
-}
+// --- Start: try connect (non-blocking) and start room polling ---
+(async ()=>{ try{ await ws_client.connect(); requestRoomsList(); }catch(e){ console.warn('initial ws connect failed',e); } })();
 
-// --- Start: try connect (non-blocking) ---
-(async ()=>{ try{ await ws_client.connect(); }catch(e){ console.warn('initial ws connect failed',e); } })();
+// Poll servers list every 5s while in lobby (room_chosen === null)
+setInterval(()=>{
+  if (ws_client.connected && room_chosen === null) requestRoomsList();
+}, 5000);
 
 // --- Self-contained PWA registration (service worker & manifest created from Blobs) ---
 if ('serviceWorker' in navigator){
@@ -452,9 +585,9 @@ if ('serviceWorker' in navigator){
   display: 'standalone',
   icons: [
     {
-      src: 'https://testingapp-dot.github.io/chesspygame/favicon.png',   // здесь путь к файлу PNG
-      sizes: '512x512',      // размер иконки
-      type: 'image/png'      // MIME тип — обязательно 'image/png'
+      src: 'https://testingapp-dot.github.io/chesspygame/favicon.png',
+      sizes: '512x512',
+      type: 'image/png'
     }
   ]
 };
@@ -468,11 +601,8 @@ document.head.appendChild(link);
 }
 
 // --- helpers / debug ---
-function logState(){ console.log({con, tris, score, moves, turn, room_chosen, player_index}); }
+function logState(){ console.log({con, tris, score, moves, turn, room_chosen, player_index, servers}); }
 
 </script>
 </body>
 </html>
-
-
-
